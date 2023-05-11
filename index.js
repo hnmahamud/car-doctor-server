@@ -48,25 +48,55 @@ async function run() {
 
     app.get("/bookings", async (req, res) => {
       const queryEmail = req.query.email;
+      let query = {};
       if (queryEmail) {
-        const query = { email: queryEmail };
-        const cursor = bookings.find(query);
-        const allValues = await cursor.toArray();
-        res.send(allValues);
-      } else {
-        console.log("User not found");
-        res.send("User not found");
+        query = { email: queryEmail };
       }
+      const options = {
+        projection: { img: 1, service: 1, date: 1, price: 1, status: 1 },
+      };
+      const cursor = bookings.find(query, options);
+      const allValues = await cursor.toArray();
+      res.send(allValues);
     });
 
     app.post("/bookings", async (req, res) => {
       const bookingData = req.body;
-      console.log(bookingData);
       const result = await bookings.insertOne(bookingData);
       if (result.insertedId) {
         console.log("Booking successfully!");
       } else {
         console.log("Booking failed!");
+      }
+      res.send(result);
+    });
+
+    app.patch("/bookings/:id", async (req, res) => {
+      const id = req.params.id;
+      const updateData = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          status: updateData.status,
+        },
+      };
+      const result = await bookings.updateOne(filter, updateDoc);
+      if (result.modifiedCount === 1) {
+        console.log("Successfully updated one document.");
+      } else {
+        console.log("No documents matched the query. Updated 0 documents.");
+      }
+      res.send(result);
+    });
+
+    app.delete("/bookings/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await bookings.deleteOne(query);
+      if (result.deletedCount === 1) {
+        console.log("Successfully deleted one document.");
+      } else {
+        console.log("No documents matched the query. Deleted 0 documents.");
       }
       res.send(result);
     });
