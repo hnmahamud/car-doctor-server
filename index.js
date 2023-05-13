@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const jwt = require("jsonwebtoken");
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -21,6 +22,27 @@ const client = new MongoClient(uri, {
   },
 });
 
+// Verify user authorization using jwt token
+const verifyJWT = (req, res, next) => {
+  const authorization = req.headers.authorization;
+  if (!authorization) {
+    return res
+      .status(401)
+      .send({ error: true, message: "unauthorized access" });
+  }
+
+  const token = authorization.split(" ")[1];
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+    if (err) {
+      return res
+        .status(403)
+        .send({ error: true, message: "unauthorized access" });
+    }
+    req.decoded = decoded;
+    next();
+  });
+};
+
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
@@ -30,12 +52,23 @@ async function run() {
     const services = carDoctor.collection("services");
     const bookings = carDoctor.collection("bookings");
 
+    // For jwt token
+    app.post("/jwt", (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "1h",
+      });
+      res.send({ token });
+    });
+
+    // Get all service
     app.get("/services", async (req, res) => {
       const cursor = services.find({});
       const allValues = await cursor.toArray();
       res.send(allValues);
     });
 
+    // Get specific service for booking
     app.get("/services/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -46,8 +79,17 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/bookings", async (req, res) => {
+    // Get user booking all data
+    app.get("/bookings", verifyJWT, async (req, res) => {
+      const decoded = req.decoded;
       const queryEmail = req.query.email;
+
+      if (decoded.email !== queryEmail) {
+        return res
+          .status(403)
+          .send({ error: true, message: "forbidden access" });
+      }
+
       let query = {};
       if (queryEmail) {
         query = { email: queryEmail };
@@ -60,6 +102,7 @@ async function run() {
       res.send(allValues);
     });
 
+    // Booked specific service
     app.post("/bookings", async (req, res) => {
       const bookingData = req.body;
       const result = await bookings.insertOne(bookingData);
@@ -71,13 +114,15 @@ async function run() {
       res.send(result);
     });
 
+    // Update booked specific service
     app.patch("/bookings/:id", async (req, res) => {
       const id = req.params.id;
       const updateData = req.body;
       const filter = { _id: new ObjectId(id) };
       const updateDoc = {
         $set: {
-          status: updateData.status,
+          // status: updateData.status,
+          ...updateData,
         },
       };
       const result = await bookings.updateOne(filter, updateDoc);
@@ -89,6 +134,7 @@ async function run() {
       res.send(result);
     });
 
+    // Delete booked specific service
     app.delete("/bookings/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
